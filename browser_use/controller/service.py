@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import json
+import enum
 import logging
 from typing import Dict, Generic, Optional, Type, TypeVar
 
@@ -47,8 +48,9 @@ class Controller(Generic[Context]):
 
 		if output_model is not None:
 			# Create a new model that extends the output model with success parameter
-			class ExtendedOutputModel(output_model):  # type: ignore
+			class ExtendedOutputModel(BaseModel):  # type: ignore
 				success: bool = True
+				data: output_model
 
 			@self.registry.action(
 				'Complete task - with return text and if the task is finished (success=True) or not yet  completly finished (success=False), because last step is reached',
@@ -56,7 +58,13 @@ class Controller(Generic[Context]):
 			)
 			async def done(params: ExtendedOutputModel):
 				# Exclude success from the output JSON since it's an internal parameter
-				output_dict = params.model_dump(exclude={'success'})
+				output_dict = params.data.model_dump()
+
+				# Enums are not serializable, convert to string
+				for key, value in output_dict.items():
+					if isinstance(value, enum.Enum):
+						output_dict[key] = value.value
+
 				return ActionResult(is_done=True, success=params.success, extracted_content=json.dumps(output_dict))
 		else:
 
