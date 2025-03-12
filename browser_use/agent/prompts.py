@@ -137,6 +137,18 @@ Interactive elements from top layer of the current page inside the viewport:
 
 		return HumanMessage(content=state_description)
 
+# class ACPMessagePrompt:
+#     def __init__(
+# 		self,
+# 		state: 'BrowserState',
+# 		result: Optional[List['ActionResult']] = None,
+# 		include_attributes: list[str] = [],
+# 		step_info: Optional['AgentStepInfo'] = None,
+# 	):
+#         self.state = state
+#         self.result = result
+# 		self.include_attributes = include_attributes
+# 		self.step_info = step_info
 
 class PlannerPrompt(SystemPrompt):
 	def get_system_message(self) -> SystemMessage:

@@ -122,6 +122,7 @@ class Agent(Generic[Context]):
 		max_actions_per_step: int = 10,
 		tool_calling_method: Optional[ToolCallingMethod] = 'auto',
 		page_extraction_llm: Optional[BaseChatModel] = None,
+		acp_llm: Optional[BaseChatModel] = None,
 		planner_llm: Optional[BaseChatModel] = None,
 		planner_interval: int = 1,  # Run planner every N steps
 		# Inject state
@@ -131,6 +132,9 @@ class Agent(Generic[Context]):
 	):
 		if page_extraction_llm is None:
 			page_extraction_llm = llm
+
+		if acp_llm is None:
+			acp_llm = llm
 
 		# Core components
 		self.task = task
@@ -155,6 +159,7 @@ class Agent(Generic[Context]):
 			include_attributes=include_attributes,
 			max_actions_per_step=max_actions_per_step,
 			tool_calling_method=tool_calling_method,
+			acp_llm = acp_llm,
 			page_extraction_llm=page_extraction_llm,
 			planner_llm=planner_llm,
 			planner_interval=planner_interval,
@@ -359,7 +364,6 @@ class Agent(Generic[Context]):
 
 			try:
 				model_output = await self.get_next_action(input_messages)
-
 				self.state.n_steps += 1
 
 				if self.register_new_step_callback:
@@ -378,6 +382,9 @@ class Agent(Generic[Context]):
 				# model call failed, remove last state message from history
 				self._message_manager._remove_last_state_message()
 				raise e
+
+			print("Next goal:")
+			print(model_output.current_state.next_goal)
 
 			result: list[ActionResult] = await self.multi_act(model_output.action)
 
@@ -669,10 +676,13 @@ class Agent(Generic[Context]):
 
 			await self._raise_if_stopped_or_paused()
 
+			print(self.settings.use_vision)
 			result = await self.controller.act(
 				action,
 				self.browser_context,
+				self.settings.use_vision,
 				self.settings.page_extraction_llm,
+				self.settings.acp_llm,
 				self.sensitive_data,
 				self.settings.available_file_paths,
 				context=self.context,

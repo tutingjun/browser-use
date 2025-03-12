@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import json
 import logging
 from typing import Dict, Generic, Optional, Type, TypeVar
@@ -24,6 +25,8 @@ from browser_use.controller.views import (
 	SendKeysAction,
 	SwitchTabAction,
 )
+from browser_use.dom.history_tree_processor.service import HistoryTreeProcessor
+from browser_use.dom.views import DOMElementNode
 from browser_use.utils import time_execution_sync
 
 logger = logging.getLogger(__name__)
@@ -479,7 +482,9 @@ class Controller(Generic[Context]):
 		self,
 		action: ActionModel,
 		browser_context: BrowserContext,
+		acp_use_vision: bool = False,
 		#
+		acp_llm: Optional[BaseChatModel] = None,
 		page_extraction_llm: Optional[BaseChatModel] = None,
 		sensitive_data: Optional[Dict[str, str]] = None,
 		available_file_paths: Optional[list[str]] = None,
@@ -499,6 +504,24 @@ class Controller(Generic[Context]):
 					# 	},
 					# 	span_type='TOOL',
 					# ):
+					actions_with_node = ["click_element", "input_text", "get_dropdown_options", "select_dropdown_option"]
+					print(action_name, params)
+					selector_map = await browser_context.get_selector_map()
+
+					if action_name in actions_with_node:
+						index = params["index"]
+						if index not in selector_map:
+							raise Exception(f'Element with index {index} does not exist - retry or use alternative actions')
+
+						element_node = selector_map[index]
+						element_locator = await browser_context.get_locate_element(element_node)
+						if element_locator != None:
+							screenshot = await element_locator.screenshot(animations="disabled")
+							screenshot_b64 = base64.b64encode(screenshot).decode('utf-8')
+
+						print("Node: ")
+						print(element_node)
+      
 					result = await self.registry.execute_action(
 						action_name,
 						params,
