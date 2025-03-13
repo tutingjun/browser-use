@@ -141,6 +141,7 @@ class Agent(Generic[Context]):
 		self.llm = llm
 		self.controller = controller
 		self.sensitive_data = sensitive_data
+		self.acp_llm = acp_llm
 
 		self.settings = AgentSettings(
 			use_vision=use_vision,
@@ -159,7 +160,6 @@ class Agent(Generic[Context]):
 			include_attributes=include_attributes,
 			max_actions_per_step=max_actions_per_step,
 			tool_calling_method=tool_calling_method,
-			acp_llm = acp_llm,
 			page_extraction_llm=page_extraction_llm,
 			planner_llm=planner_llm,
 			planner_interval=planner_interval,
@@ -383,10 +383,7 @@ class Agent(Generic[Context]):
 				self._message_manager._remove_last_state_message()
 				raise e
 
-			print("Next goal:")
-			print(model_output.current_state.next_goal)
-
-			result: list[ActionResult] = await self.multi_act(model_output.action)
+			result: list[ActionResult] = await self.multi_act(model_output.action, current_goal=model_output.current_state.next_goal)
 
 			self.state.last_result = result
 
@@ -658,6 +655,7 @@ class Agent(Generic[Context]):
 	async def multi_act(
 		self,
 		actions: list[ActionModel],
+		current_goal: str = "Execute initial actions for the agent",
 		check_for_new_elements: bool = True,
 	) -> list[ActionResult]:
 		"""Execute multiple actions"""
@@ -681,13 +679,15 @@ class Agent(Generic[Context]):
 
 			await self._raise_if_stopped_or_paused()
 
-			print(self.settings.use_vision)
 			result = await self.controller.act(
 				action,
 				self.browser_context,
+				self.task,
+				current_goal,
+				self.available_actions,
+				self.acp_llm,
 				self.settings.use_vision,
 				self.settings.page_extraction_llm,
-				self.settings.acp_llm,
 				self.sensitive_data,
 				self.settings.available_file_paths,
 				context=self.context,
@@ -837,7 +837,7 @@ class Agent(Generic[Context]):
 			if updated_action is None:
 				raise ValueError(f'Could not find matching element {i} in current page')
 
-		result = await self.multi_act(updated_actions)
+		result = await self.multi_act(updated_actions, current_goal="Execute a single step from history with element validation")
 
 		await asyncio.sleep(delay)
 		return result

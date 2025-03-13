@@ -40,16 +40,16 @@ async def run_search():
     print('Final Result:')
     pprint(history.final_result(), indent=4)
     
-    print('\nErrors:')
-    pprint(history.errors(), indent=4)
+    # print('\nErrors:')
+    # pprint(history.errors(), indent=4)
     
-    print('\nModel Outputs:')
-    pprint(history.model_actions(), indent=4)
+    # print('\nModel Outputs:')
+    # pprint(history.model_actions(), indent=4)
     
-    print('\nThoughts:')
-    pprint(history.model_thoughts(), indent=4)
-    history.save_to_file('./history1.json')
-    await browser.close()
+    # print('\nThoughts:')
+    # pprint(history.model_thoughts(), indent=4)
+    # history.save_to_file('./history1.json')
+    # await browser.close()
 
 
 if __name__ == '__main__':

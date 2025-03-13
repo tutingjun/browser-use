@@ -11,6 +11,7 @@ from langchain_core.prompts import PromptTemplate
 # from lmnr.sdk.laminar import Laminar
 from pydantic import BaseModel
 
+from browser_use.agent.prompts import ACPMessagePrompt
 from browser_use.agent.views import ActionModel, ActionResult
 from browser_use.browser.context import BrowserContext
 from browser_use.controller.registry.service import Registry
@@ -50,7 +51,7 @@ class Controller(Generic[Context]):
 			# Create a new model that extends the output model with success parameter
 			class ExtendedOutputModel(BaseModel):  # type: ignore
 				success: bool = True
-				data: output_model
+				data: output_model # type: ignore
 
 			@self.registry.action(
 				'Complete task - with return text and if the task is finished (success=True) or not yet  completly finished (success=False), because last step is reached',
@@ -490,9 +491,12 @@ class Controller(Generic[Context]):
 		self,
 		action: ActionModel,
 		browser_context: BrowserContext,
-		acp_use_vision: bool = False,
-		#
-		acp_llm: Optional[BaseChatModel] = None,
+		ultimate_task: str,
+		current_task: str,
+  		action_description: str,
+		acp_llm: BaseChatModel,
+		acp_use_vision: bool = False,		
+  		#
 		page_extraction_llm: Optional[BaseChatModel] = None,
 		sensitive_data: Optional[Dict[str, str]] = None,
 		available_file_paths: Optional[list[str]] = None,
@@ -513,9 +517,14 @@ class Controller(Generic[Context]):
 					# 	span_type='TOOL',
 					# ):
 					actions_with_node = ["click_element", "input_text", "get_dropdown_options", "select_dropdown_option"]
-					print(action_name, params)
+     
+					acp_params = {}
+					for key, value in params.items():
+						if key != "index":
+							acp_params[key] = value
+					screenshot_b64 = None
+      
 					selector_map = await browser_context.get_selector_map()
-
 					if action_name in actions_with_node:
 						index = params["index"]
 						if index not in selector_map:
@@ -523,33 +532,47 @@ class Controller(Generic[Context]):
 
 						element_node = selector_map[index]
 						element_locator = await browser_context.get_locate_element(element_node)
-						if element_locator != None:
+						if element_locator != None and acp_use_vision:
 							screenshot = await element_locator.screenshot(animations="disabled")
 							screenshot_b64 = base64.b64encode(screenshot).decode('utf-8')
+						acp_params["element_node"] =  repr(element_node)
 
-						print("Node: ")
-						print(element_node)
-      
-					result = await self.registry.execute_action(
-						action_name,
-						params,
-						browser=browser_context,
-						page_extraction_llm=page_extraction_llm,
-						sensitive_data=sensitive_data,
-						available_file_paths=available_file_paths,
-						context=context,
-					)
+					acp_prompt = ACPMessagePrompt(action_description, ultimate_task, current_task, action_name, json.dumps(acp_params), screenshot_b64)
+					msg = [acp_prompt.get_system_message(), acp_prompt.get_user_message()]
+					class ACPResult(BaseModel):
+						"""
+						Validation results.
+						"""
+						allow: bool
+						reason: str
 
-					# Laminar.set_span_output(result)
+					validator = acp_llm.with_structured_output(ACPResult, include_raw=True)
+					response: dict[str, Any] = await validator.ainvoke(msg)  # type: ignore
+					parsed: ACPResult = response['parsed']
 
-					if isinstance(result, str):
-						return ActionResult(extracted_content=result)
-					elif isinstance(result, ActionResult):
-						return result
-					elif result is None:
-						return ActionResult()
+					if parsed.allow:
+						logger.info(f'✅ Action allow: {parsed.reason}')
+						result = await self.registry.execute_action(
+							action_name,
+							params,
+							browser=browser_context,
+							page_extraction_llm=page_extraction_llm,
+							sensitive_data=sensitive_data,
+							available_file_paths=available_file_paths,
+							context=context,
+						)
+						if isinstance(result, str):
+							return ActionResult(extracted_content=result)
+						elif isinstance(result, ActionResult):
+							return result
+						elif result is None:
+							return ActionResult()
+						else:
+							raise ValueError(f'Invalid action result type: {type(result)} of {result}')
 					else:
-						raise ValueError(f'Invalid action result type: {type(result)} of {result}')
+						logger.info(f'❌ Action deny: {parsed.reason}')
+						msg = f'The action {action_name}: {json.dumps(acp_params)} is not authorized. {parsed.reason}.'
+						return ActionResult(extracted_content=msg, include_in_memory=True)
 			return ActionResult()
 		except Exception as e:
 			raise e

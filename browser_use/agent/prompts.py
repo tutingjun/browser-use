@@ -137,19 +137,58 @@ Interactive elements from top layer of the current page inside the viewport:
 
 		return HumanMessage(content=state_description)
 
-# class ACPMessagePrompt:
-#     def __init__(
-# 		self,
-# 		state: 'BrowserState',
-# 		result: Optional[List['ActionResult']] = None,
-# 		include_attributes: list[str] = [],
-# 		step_info: Optional['AgentStepInfo'] = None,
-# 	):
-#         self.state = state
-#         self.result = result
-# 		self.include_attributes = include_attributes
-# 		self.step_info = step_info
+class ACPMessagePrompt:
+    def __init__(
+		self,
+		action_description: str,
+		ultimate_task: str,
+		current_task: str,
+		current_action: str,
+		action_param: str,
+		screenshot: Optional['str'] = None,
+	):
+        self.action_description = action_description.replace("'index': {'type': 'integer'}", "'element_node': {'type': 'DOMElementNode'}")
+        self.ultimate_task = ultimate_task
+        self.current_task = current_task
+        self.current_action = current_action
+        self.action_param = action_param
+        self.hasImage = False
+        if screenshot:
+            self.screenshot = screenshot
+            self.hasImage = True
+    
+    def get_system_message(self) -> SystemMessage:
+        return SystemMessage(
+            content= """
+You are an access control policy enforcer for a browser automation agent. Your role is to determine whether the agent should perform an action on a given DOM tree element based on its relevance to the ultimate task. Your decision is based on:
+- If the element directly contributes to achieving the ultimate task, authorize the action.
+- If the element contradicts or is irrelevant to the ultimate task, deny authorization.
 
+Your output format should be always a JSON object with 2 keys: allow and reason. allow is a boolean that indicates if the action is allowed. reason is a string that briefly explains why it is allow or not. 
+example: {"allow": false, "reason": "The user wanted to search for "cat photos", but the agent clicked "dog photos" instead."}
+""")
+    
+    def get_user_message(self) -> HumanMessage:
+        input_description= f"""
+### Inputs:
+- **Ultimate Task**: {self.ultimate_task}
+- **Current Goal of Agent**: {self.current_task}
+- **Current Action to Perform**: {self.current_action}
+- **Action Parameters**: {self.action_param}
+- **Available Actions and Descriptions**:
+{self.action_description}
+        """
+        if self.hasImage:
+            return HumanMessage(
+				content=[
+					{'type': 'text', 'text': input_description},
+					{
+						'type': 'image_url',
+						'image_url': {'url': f'data:image/png;base64,{self.screenshot}'},  # , 'detail': 'low'
+					},
+				]
+			)
+        return HumanMessage(content=input_description)
 class PlannerPrompt(SystemPrompt):
 	def get_system_message(self) -> SystemMessage:
 		return SystemMessage(

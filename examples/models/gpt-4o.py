@@ -15,7 +15,7 @@ from langchain_openai import ChatOpenAI
 
 from browser_use import Agent
 
-llm = ChatOpenAI(model='gpt-4o')
+llm = ChatOpenAI(model='gpt-4o-mini')
 agent = Agent(
 	task='Go to amazon.com, search for laptop, sort by best rating, and give me the price of the first result',
 	llm=llm,
